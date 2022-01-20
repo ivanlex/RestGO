@@ -16,7 +16,7 @@ var a App
 
 func TestMain(m *testing.M) {
 	a = App{}
-	a.Initialize("root", "021345Lex", "mydb")
+	a.Initialize("DBAdmin", "92468312#!Lex", "mydb")
 
 	ensureTableExists()
 
@@ -25,6 +25,19 @@ func TestMain(m *testing.M) {
 	clearTable()
 
 	os.Exit(code)
+}
+
+func TestEmptyTable(t *testing.T) {
+	clearTable()
+
+	req, _ := http.NewRequest("GET", "/users", nil)
+	response := executeRequest(req)
+
+	checkResponseCode(t, http.StatusOK, response.Code)
+
+	if body := response.Body.String(); body != "[]" {
+		t.Errorf("Expected an empty array. Got %s", body)
+	}
 }
 
 func TestGetNonExistentUser(t *testing.T) {
@@ -90,7 +103,7 @@ func addUsers(count int) {
 
 }
 
-func updateUser(t *testing.T) {
+func TestUpdateUser(t *testing.T) {
 	clearTable()
 	addUsers(1)
 
@@ -139,19 +152,6 @@ func TestDeleteUser(t *testing.T) {
 	checkResponseCode(t, http.StatusOK, response.Code)
 }
 
-func TestEmptyTable(t *testing.T) {
-	clearTable()
-
-	req, _ := http.NewRequest("GET", "/users", nil)
-	response := executeRequest(req)
-
-	checkResponseCode(t, http.StatusOK, response.Code)
-
-	if body := response.Body.String(); body != "[]" {
-		t.Errorf("Expected an empty array. Got %s", body)
-	}
-}
-
 func executeRequest(req *http.Request) *httptest.ResponseRecorder {
 	rr := httptest.NewRecorder()
 	a.Router.ServeHTTP(rr, req)
@@ -177,11 +177,11 @@ func clearTable() {
 	a.DB.Exec(tableResetIncrement)
 }
 
-const tableClearQuery = `DELETE FROM mydb`
-const tableResetIncrement = `ALTER TABLE mydb AUTO_INCREMENT = 1`
+const tableClearQuery = `DELETE FROM users`
+const tableResetIncrement = `ALTER TABLE users AUTO_INCREMENT = 1`
 
 const tableCreationQuery = `
-CREATE TABLE IF NOT EXISTS mydb
+CREATE TABLE IF NOT EXISTS users
 (
 	id INT AUTO_INCREMENT PRIMARY KEY,
 	name VARCHAR(50) NOT NULL,
