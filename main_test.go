@@ -1,9 +1,11 @@
+// main_test.go
+
 package main
 
 import (
+	"fmt"
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -27,6 +29,25 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
+func ensureTableExists() {
+	if _, err := a.DB.Exec(tableCreationQuery); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func clearTable() {
+	a.DB.Exec("DELETE FROM users")
+	a.DB.Exec("ALTER TABLE users AUTO_INCREMENT = 1")
+}
+
+const tableCreationQuery = `
+CREATE TABLE IF NOT EXISTS users
+(
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(50) NOT NULL,
+    age INT NOT NULL
+)`
+
 func TestEmptyTable(t *testing.T) {
 	clearTable()
 
@@ -37,6 +58,19 @@ func TestEmptyTable(t *testing.T) {
 
 	if body := response.Body.String(); body != "[]" {
 		t.Errorf("Expected an empty array. Got %s", body)
+	}
+}
+
+func executeRequest(req *http.Request) *httptest.ResponseRecorder {
+	rr := httptest.NewRecorder()
+	a.Router.ServeHTTP(rr, req)
+
+	return rr
+}
+
+func checkResponseCode(t *testing.T, expected, actual int) {
+	if expected != actual {
+		t.Errorf("Expected response code %d. Got %d\n", expected, actual)
 	}
 }
 
@@ -76,8 +110,21 @@ func TestCreateUser(t *testing.T) {
 		t.Errorf("Expected user age to be '30'. Got '%v'", m["age"])
 	}
 
+	// the id is compared to 1.0 because JSON unmarshaling converts numbers to
+	// floats, when the target is a map[string]interface{}
 	if m["id"] != 1.0 {
-		t.Errorf("Expected user ID to be '1'. Got '%v'", m["id"])
+		t.Errorf("Expected product ID to be '1'. Got '%v'", m["id"])
+	}
+}
+
+func addUsers(count int) {
+	if count < 1 {
+		count = 1
+	}
+
+	for i := 0; i < count; i++ {
+		statement := fmt.Sprintf("INSERT INTO users(name, age) VALUES('%s', %d)", ("User " + strconv.Itoa(i+1)), ((i+1) * 10))
+		a.DB.Exec(statement)
 	}
 }
 
@@ -89,18 +136,6 @@ func TestGetUser(t *testing.T) {
 	response := executeRequest(req)
 
 	checkResponseCode(t, http.StatusOK, response.Code)
-}
-
-func addUsers(count int) {
-	if count < 1 {
-		count = 1
-	}
-
-	for i := 0; i < count; i++ {
-		statement := fmt.Sprintf("INSERT INTO users(name, age) VALUES ('%s',%d)", ("User" + strconv.Itoa(i+1)), ((i + 1) * 10))
-		a.DB.Exec(statement)
-	}
-
 }
 
 func TestUpdateUser(t *testing.T) {
@@ -120,17 +155,18 @@ func TestUpdateUser(t *testing.T) {
 	checkResponseCode(t, http.StatusOK, response.Code)
 
 	var m map[string]interface{}
+	json.Unmarshal(response.Body.Bytes(), &m)
 
 	if m["id"] != originalUser["id"] {
 		t.Errorf("Expected the id to remain the same (%v). Got %v", originalUser["id"], m["id"])
 	}
 
-	if m["name"] != originalUser["name"] {
-		t.Errorf("Expected the name to remain the same (%v). Got %v", originalUser["name"], m["name"])
+	if m["name"] == originalUser["name"] {
+		t.Errorf("Expected the name to change from '%v' to '%v'. Got '%v'", originalUser["name"], m["name"], m["name"])
 	}
 
-	if m["age"] != originalUser["age"] {
-		t.Errorf("Expected the age to remain the same (%v). Got %v", originalUser["age"], m["age"])
+	if m["age"] == originalUser["age"] {
+		t.Errorf("Expected the age to change from '%v' to '%v'. Got '%v'", originalUser["age"], m["age"], m["age"])
 	}
 }
 
@@ -149,41 +185,5 @@ func TestDeleteUser(t *testing.T) {
 
 	req, _ = http.NewRequest("GET", "/user/1", nil)
 	response = executeRequest(req)
-	checkResponseCode(t, http.StatusOK, response.Code)
+	checkResponseCode(t, http.StatusNotFound, response.Code)
 }
-
-func executeRequest(req *http.Request) *httptest.ResponseRecorder {
-	rr := httptest.NewRecorder()
-	a.Router.ServeHTTP(rr, req)
-
-	return rr
-}
-
-func checkResponseCode(t *testing.T, expected, actual int) {
-	if expected != actual {
-		t.Errorf("Expected response code %d. Got %d\n", expected, actual)
-	}
-
-}
-
-func ensureTableExists() {
-	if _, err := a.DB.Exec(tableCreationQuery); err != nil {
-		log.Fatal(err)
-	}
-}
-
-func clearTable() {
-	a.DB.Exec(tableClearQuery)
-	a.DB.Exec(tableResetIncrement)
-}
-
-const tableClearQuery = `DELETE FROM users`
-const tableResetIncrement = `ALTER TABLE users AUTO_INCREMENT = 1`
-
-const tableCreationQuery = `
-CREATE TABLE IF NOT EXISTS users
-(
-	id INT AUTO_INCREMENT PRIMARY KEY,
-	name VARCHAR(50) NOT NULL,
-	age INT NOT NULL
-)`
